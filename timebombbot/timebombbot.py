@@ -281,7 +281,7 @@ class TimeBombBot:
                 if '選択' in r_text:
                     index = -1
                     for i in range(n):
-                        if self.players[i].name in r_text or self.players[i].display_name:
+                        if self.players[i].name in r_text or self.players[i].display_name in r_text:
                             index = i
                             break
                     if index == -1:
