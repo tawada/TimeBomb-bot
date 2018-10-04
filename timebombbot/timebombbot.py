@@ -8,8 +8,10 @@ MODE_GAMING    = 2
 MODE_DEAD      = 3
 MODE_STR       = ['初期状態', '参加者受付中', 'ゲーム中', 'Bot停止中']
 
-STATE_WAIT_CARD   = 0
-STATE_WAIT_NIPPER = 1
+STATE_NONE        = 0
+STATE_WAIT_CARD   = 1
+STATE_WAIT_NIPPER = 2
+STATE_STR         = ['', '手札提出待ち', 'ニッパー係待ち']
 
 TEAM_P = 0
 TEAM_A = 1
@@ -51,9 +53,10 @@ class TimeBombBot:
             print('config file is unavailable')
             return
         self.token = df['token']
-        self.game_channel = int(df['game_channel'])
-#        self.game_channel = int(df['debug_channel'])
+        self.game_channel_id = int(df['game_channel'])
+#        self.game_channel_id = int(df['debug_channel'])
         self.mode = MODE_INIT
+        self.state = STATE_NONE
         self.n_players = 0
         self.players = []
         self.player_channel = []
@@ -61,17 +64,24 @@ class TimeBombBot:
         self.player_cards = []
         self.select_cards = []
         self.client = discord.Client()
-        self.main_channel = discord.Object(id=self.game_channel)
+        self.main_channel = discord.Object(id=self.game_channel_id)
         
     def run(self):
         """
         Botの実行
         """
-        if self.mode != MODE_DEAD:
-            @self.client.event
-            async def on_message(message):
-                await self.on_message(message)
-            self.client.run(self.token)
+        
+        #Botの初期化に失敗していたらなにもしない
+        if self.mode == MODE_DEAD:
+            return
+        
+        #callback関数を定義
+        @self.client.event
+        async def on_message(message):
+            await self.on_message(message)
+        
+        #callback関数を登録
+        self.client.run(self.token)
 
     async def send_message(self, text, channel=None):
         """
@@ -79,7 +89,11 @@ class TimeBombBot:
         text: 送信したい文字列
         channel: 送信したいチャンネル, デフォルトはゲームのチャンネル
         """
+        
+        #デバッグ用, 送信文字列を表示
         print('send:{}'.format(text))
+        
+        #channelを省略するとデフォルトはゲームのチャンネル
         if channel == None:
             channel = self.main_channel
         await self.client.send_message(channel, text)
@@ -88,10 +102,14 @@ class TimeBombBot:
         """
         受信した文字列を解析してゲームを進める関数
         """
+        
+        #Bot自身の発言は解析しない
         if self.client.user == message.author:
             return
+        
         author          = message.author
         author_name     = author.name
+        author_channel  = await self.client.start_private_message(author)
         author_channel  = await self.client.start_private_message(author)
         message_channel = message.channel
         r_text          = message.content
@@ -106,26 +124,39 @@ class TimeBombBot:
                 await self.send_message('{}'.format(self.player_cards))
                 await self.send_message('{}'.format(self.select_cards))
             elif r_text.startswith('/state'):
-                await self.send_message('mode:{}'.format(self.mode))
-                await self.send_message('state:{}'.format(self.state))
+                await self.send_message('mode:{}'.format(MODE_STR[self.mode]))
+                await self.send_message('state:{}'.format(STATE_STR[self.state]))
+            elif r_text.startswith('/all'):
+                await self.send_message('{}'.format([p.name for p in self.players]))
+                await self.send_message('{}'.format([TEAM_STR[t] for t in self.players_team]))
+                await self.send_message('{}'.format([[CARD_STR[c] for c in p] for p in self.player_cards]))
+                await self.send_message('{}'.format([CARD_STR[c] for c in self.select_cards]))
+                await self.send_message('mode:{}'.format(MODE_STR[self.mode]))
+                await self.send_message('state:{}'.format(STATE_STR[self.state]))
             return
         
         if self.mode == MODE_INIT:
-#            if message_channel != self.game_channel:
-#                return
+            if int(message_channel.id) != int(self.main_channel.id):
+                return
             if 'タイムボム' in r_text:
                 self.mode = MODE_ACCEPTING
                 s_text = 'タイムボムを開始します。\n' + '参加者は\'参加\'を宣言してください。'
                 self.players = []
                 await self.send_message(s_text)
                 return
+            elif '参加' in r_text or '開始' in r_text:
+                s_text = 'ゲーム名を宣言してください。'
+                await self.send_message(s_text)
+            
         elif self.mode == MODE_ACCEPTING:
-#            if message_channel != self.game_channel:
-#                return
+            if int(message_channel.id) != int(self.main_channel.id):
+                return
             if '不参加' in r_text:
                 if author in self.players:
                     self.players.remove(author)
-            elif '参加' in r_text:
+                    s_text = '{}が参加を取りやめた．．．'.format(author_name)
+                    await self.send_message(s_text)
+            elif '参加' in r_text or 'さんか' in r_text:
                 if author not in self.players:
                     self.players.append(author)
                     n = len(self.players)
@@ -137,9 +168,13 @@ class TimeBombBot:
                     elif n >= 4:
                         s_text = '\'開始\'を宣言してください。'
                         await self.send_message(s_text)
+                else:
+                    s_text = '{}はすでに参加しています。'.format(author_name)
+                    await self.send_message(s_text)
+            
             elif '開始' in r_text:
                 n = len(self.players)
-                s_text = '参加者は '
+                s_text = 'ゲームを開始します。\n参加者は '
                 for p in self.players:
                     s_text += p.name + ' '
                 s_text += 'の{}人です。'.format(n)
@@ -158,16 +193,17 @@ class TimeBombBot:
                     p,a = 5,3
                 else:
                     return
+                
                 T=([TEAM_P]*p)
                 T.extend([TEAM_A]*a)
                 random.shuffle(T)
-                self.players_team = []
+                self.players_team = [T[i] for i in range(n)]
+                self.select_cards = [CARD_NONE for i in range(n)]
                 for i in range(n):
-                    self.select_cards.append(-1)
-                    self.players_team.append(T[i])
-                    private_channel = await self.client.start_private_message(self.players[i])
+                    #private_channel = await self.client.start_private_message(self.players[i])
                     s_text = 'あなたは{}です'.format(TEAM_STR[self.players_team[i]])
-                    await self.send_message(s_text, private_channel)
+                    #await self.send_message(s_text, private_channel)
+                    await self.client.send_message(self.players[i], s_text)
                 
                 if n == p+a:
                     s_text = '{}が{}人、{}が{}人います。'.format(TEAM_STR[TEAM_P], p, TEAM_STR[TEAM_A], a)
@@ -186,10 +222,20 @@ class TimeBombBot:
                 self.game_state = STATE_WAIT_CARD
                 
         elif self.mode == MODE_GAMING:
+            
+            player_index = self.players.index(author)
+            #ゲーム参加者以外は発言を解析しない
+            if player_index == -1:
+                s_text = '部外者は発言しないでください。'
+                await self.send_message(s_text)
+                return
+            
             if self.game_state == STATE_WAIT_CARD:
-                #プライベートチャンネルでカード出す
-#                if message_channel != author_channel:
-#                    return
+                
+                #ゲームチャンネルではカードを出せない
+                if int(message_channel.id) == int(self.main_channel.id):
+                    return
+                
                 if CARD_D in r_text:
                     card_index = CARD_D
                 elif CARD_B in r_text:
@@ -198,7 +244,11 @@ class TimeBombBot:
                     card_index = CARD_A
                 else:
                     return
-                player_index = self.players.index(author)
+                
+                #ニッパー係はカードを出せない
+                if self.nipper == player_index:
+                    return
+                
                 self.player_cards[player_index].remove(card_index)
                 self.select_cards[player_index] = card_index
                 s_text = '{}の手札を場に出しました。'.format(CARD_STR[card_index])
@@ -206,7 +256,7 @@ class TimeBombBot:
                 s_text = '{}が手札を場に出しました。'.format(author_name)
                 await self.send_message(s_text)
                 
-                if -1 not in self.select_cards:
+                if CARD_NONE not in self.select_cards:
                     self.game_state = STATE_WAIT_NIPPER
                     s_text = '全員のカードが場に出ました。\nニッパー係は\'プレイヤー名\'を\'選択\'してください。'
                 
@@ -294,21 +344,25 @@ class TimeBombBot:
         s_text +='ニッパー係は{}です。'.format(self.players[self.nipper].name)
         await self.send_message(s_text)
         for i in range(n):
-            if i == self.nipper:
-                self.select_cards[i] = 0
-                continue
             self.select_cards[i] = -1
-            private_channel = await self.client.start_private_message(self.players[i])
+#            private_channel = await self.client.start_private_message(self.players[i])
             s_text  = 'あなたの手札は '
             for j in range(6-self.tern):
                s_text += '{} '.format(CARD_STR[self.player_cards[i][j]])
-            s_text += 'です。\n場に出す手札を選んでください。'
-            await self.send_message(s_text, private_channel)
+            s_text += 'です。'
+#            await self.send_message(s_text, private_channel)
+            await self.client.send_message(self.players[i], s_text)
             
-        if random.randrange(10) == 0:
+            if i == self.nipper:
+                self.select_cards[i] = 0
+                continue
+            
+            s_text = '場に出す手札を選んでください。'
+            await self.client.send_message(self.players[i], s_text)
+            
+        if random.randrange(2) == 0:
             if FLEVOR == []:
                 return
-            s_text = FLEVOR[random.randrange(len(FLEVOR))]
-            FLEVOR.remove[s_text]
+            s_text = '`{}`'.format(FLEVOR.pop(random.randrange(len(FLEVOR))))
             await self.send_message(s_text)
 
