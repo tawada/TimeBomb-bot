@@ -54,7 +54,7 @@ class TimeBombBot:
             return
         self.token = df['token']
         self.game_channel_id = int(df['game_channel'])
-        self.game_channel_id = int(df['debug_channel'])
+#        self.game_channel_id = int(df['debug_channel'])
         self.mode = MODE_INIT
         self.state = STATE_NONE
         self.players = []
