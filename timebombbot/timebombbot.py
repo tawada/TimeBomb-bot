@@ -101,10 +101,11 @@ class TimeBombBot:
 
     class dummy:
         def __init__(self):
-            self.author  = None
-            self.name    = None
-            self.channel = None
-            self.content = None
+            self.author       = None
+            self.name         = None
+            self.display_name = None
+            self.channel      = None
+            self.content      = None
 
     async def on_message(self, message):
         """
@@ -143,11 +144,12 @@ class TimeBombBot:
                 if '茶' not in player:
                     await self.send_message('不正なプレイヤー名です。')
                     return
-                dummy_message = self.dummy()
-                dummy_message.author = self.dummy()
-                dummy_message.author.name = 'ロボ' + player
-                dummy_message.channel = self.main_channel
-                dummy_message.content = s_text
+                dummy_message                     = self.dummy()
+                dummy_message.author              = self.dummy()
+                dummy_message.author.name         = 'ロボ' + player
+                dummy_message.author.display_name = player
+                dummy_message.channel             = self.main_channel
+                dummy_message.content             = s_text
                 await self.send_message('{}「{}」'.format(dummy_message.author.name, s_text))
                 await self.on_message(dummy_message)
                 return
@@ -279,7 +281,7 @@ class TimeBombBot:
                 if '選択' in r_text:
                     index = -1
                     for i in range(n):
-                        if self.players[i].name in r_text:
+                        if self.players[i].name in r_text or self.players[i].display_name:
                             index = i
                             break
                     if index == -1:
