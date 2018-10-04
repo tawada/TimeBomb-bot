@@ -38,6 +38,9 @@ FLEVOR = ['タイムパトロールは時を守っているんだ!',
           'Botだってたまにはサボります',
           'ロボ・・・ロボ・・・',
           '「生きるんて、つらいなぁ」――未来を見通す賢者 ――',
+          '古来より時を狙う集団は多い。かくいう私もね・・・。',
+          '爆弾作りは繊細さが命！タイムボムが誤爆すると作り始める前に戻ってしまうのさ。',
+          'ボクはボムボム、キミもボムボム？',
           'タイムボムが爆発した！・・・ウソですよ（ハート）'
           ]
 
@@ -81,6 +84,7 @@ class TimeBombBot:
         #callback関数を登録
         self.client.run(self.token)
 
+
     async def send_message(self, text, dst=None):
         """
         Discordに文字列を送信
@@ -115,9 +119,9 @@ class TimeBombBot:
         #Bot自身の発言は解析しない
         if self.client.user == message.author:
             return
-        
+
         author          = message.author
-        author_name     = author.name
+        author_name     = author.display_name
         #author_channel  = await self.client.start_private_message(author)
         message_channel = message.channel
         r_text          = message.content
@@ -134,11 +138,15 @@ class TimeBombBot:
                 await self.send_message('mode:{}'.format(MODE_STR[self.mode]))
                 await self.send_message('state:{}'.format(STATE_STR[self.state]))
             elif r_text.startswith('/all'):
-                await self.send_message('プレイヤー：{}'.format([p.name for p in self.players]))
+                await self.send_message('プレイヤー：{}'.format([p.display_name for p in self.players]))
                 await self.send_message('チーム：{}'.format([TEAM_STR[t] for t in self.players_team]))
                 await self.send_message('手札：{}'.format([[CARD_STR[c] for c in p] for p in self.player_cards]))
                 await self.send_message('mode:{}'.format(MODE_STR[self.mode]))
-                await self.send_message('state:{}'.format(STATE_STR[self.state]))
+            elif r_text.startswith('/dm'):
+                await self.send_message('DM Test', author)
+            elif r_text.startswith('/reset'):
+                self.mode = MODE_INIT
+                return
             elif r_text.startswith('/say'):
                 command, player, s_text = r_text.split()
                 if '茶' not in player:
@@ -186,7 +194,7 @@ class TimeBombBot:
                         s_text = '参加者がそろったら`開始`を宣言してください。'
                         await self.send_message(s_text)
                     elif n >= 4:
-                        s_text = '`開始`を宣言してください。'
+                        s_text = '`開始`を宣言してください。\n現在の参加者は{}人です。'.format(n)
                         await self.send_message(s_text)
                 else:
                     s_text = '{}はすでに参加しています。'.format(author_name)
@@ -196,7 +204,7 @@ class TimeBombBot:
                 n = len(self.players)
                 s_text = 'ゲームを開始します。\n参加者は '
                 for p in self.players:
-                    s_text += '`{}` '.format(p.name)
+                    s_text += '`{}` '.format(p.display_name)
                 s_text += 'の{}人です。'.format(n)
                 await self.send_message(s_text)
                 
@@ -265,7 +273,7 @@ class TimeBombBot:
                 if self.players[i].name == author.name:
                     player_index = i
                     break
-            print(player_index)
+            
             #ゲーム参加者以外は発言を解析しない
             if player_index == -1:
                 s_text = '部外者は発言しないでください。'
@@ -284,7 +292,8 @@ class TimeBombBot:
                         if self.players[i].name in r_text or self.players[i].display_name in r_text:
                             index = i
                             break
-                    if index == -1:
+                    #ニッパー係自身は対象としない
+                    if index == -1 or index == self.nipper:
                         return
                         
                     if self.player_cards[index] == []:
@@ -294,6 +303,7 @@ class TimeBombBot:
                     
                     select_index = random.randrange(len(self.player_cards[index]))
                     select_card  = self.player_cards[index].pop(select_index)
+                    
                     s_text = '`{}`のカードをめくります。\nめくったカードは...`{}`でした。'.format(self.players[index].name, CARD_STR[select_card])
                     await self.send_message(s_text)
                     
@@ -368,18 +378,6 @@ class TimeBombBot:
         for i in range(n):
             #カードを配る
             self.player_cards.append([Y[m*i+j] for j in range(m)])
-    
-    async def start_tern(self):
-        """
-        ターンの開始処理
-        """
-        n = len(self.players)
-        s_text = '\n**ラウンド{} ターン{}**\n'.format(self.round, self.tern)
-        if self.defuse!=0:
-            s_text += '現在の解除ポイントは`{}`点です。\n'.format(self.defuse)
-        s_text += 'ニッパー係は`{}`です。\n'.format(self.players[self.nipper].name)
-        s_text += 'ニッパー係は`プレイヤー名`を`選択`してください。'
-        await self.send_message(s_text)
         for i in range(n):
             s_text  = 'あなたの手札は '
             if self.player_cards[i] == []:
@@ -389,6 +387,20 @@ class TimeBombBot:
                     s_text += '`{}` '.format(CARD_STR[c])
                 s_text += 'です。'
             await self.send_message(s_text, self.players[i])
+        s_text = '*新しいラウンドの開始です！*\nカードを配りました。'
+        await self.send_message(s_text)
+        
+    async def start_tern(self):
+        """
+        ターンの開始処理
+        """
+        n = len(self.players)
+        s_text = '\n\n**ラウンド{} ターン{}**\n'.format(self.round, self.tern)
+        if self.defuse!=0:
+            s_text += '現在の解除ポイントは`{}`点です。\n'.format(self.defuse)
+        s_text += 'ニッパー係は`{}`です。\n'.format(self.players[self.nipper].name)
+        s_text += 'ニッパー係は`プレイヤー名`を`選択`してください。'
+        await self.send_message(s_text)
         
         if random.randrange(10) == 0:
             if FLEVOR == []:
