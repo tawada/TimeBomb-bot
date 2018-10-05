@@ -119,7 +119,10 @@ class TimeBombBot:
         #Bot自身の発言は解析しない
         if self.client.user == message.author:
             return
-
+        #ファイル送信には反応しない
+        if message.attachments:
+            return
+        
         author          = message.author
         author_name     = author.display_name
         #author_channel  = await self.client.start_private_message(author)

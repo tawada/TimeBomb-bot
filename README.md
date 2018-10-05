@@ -12,8 +12,8 @@ https://intokubodoge.com/timebomb)を参考にしています.
 ## 実行方法
     $ git clone git@github.com:tawada/timebomb-bot.git
     $ cd timebomb-bot
-    $ echo "token=XXXXXXXX"> data/config
-    $ echo "game_channel=YYYYYYYY">> data/config
+    $ echo "{'token':'XXXXXXXX',"> data/config.json
+    $ echo "'game_channel':'YYYYYYYY'}">> data/config.json
     $ make run
 
  * XXXXXXXXは[DEVELOPER PORTAL](https://discordapp.com/developers/applications/)から取得したTokenを入力してください.
@@ -32,4 +32,4 @@ https://intokubodoge.com/timebomb)を参考にしています.
     三郎> 参加
     四郎> 参加
     太郎> 開始
-    GM> 参加者は4人です
+    Bot> 参加者は4人です
