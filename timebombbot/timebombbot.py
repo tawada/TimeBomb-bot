@@ -291,8 +291,9 @@ class TimeBombBot:
                 
                 if '選択' in r_text:
                     index = -1
+                    r_text_lower = r_text.lower()
                     for i in range(n):
-                        if self.players[i].name in r_text or self.players[i].display_name in r_text:
+                        if self.players[i].name.lower() in r_text_lower or self.players[i].display_name.lower() in r_text_lower:
                             index = i
                             break
                     #ニッパー係自身は対象としない
@@ -300,14 +301,14 @@ class TimeBombBot:
                         return
                         
                     if self.player_cards[index] == []:
-                        s_text = '`{}`のカードはありません！'.format(self.players[index].name)
+                        s_text = '`{}`のカードはありません！'.format(self.players[index].display_name)
                         await self.send_message(s_text)
                         return
                     
                     select_index = random.randrange(len(self.player_cards[index]))
                     select_card  = self.player_cards[index].pop(select_index)
                     
-                    s_text = '`{}`のカードをめくります。\nめくったカードは...`{}`でした。'.format(self.players[index].name, CARD_STR[select_card])
+                    s_text = '`{}`のカードをめくります。\nめくったカードは...`{}`でした。'.format(self.players[index].display_name, CARD_STR[select_card])
                     await self.send_message(s_text)
                     
                     self.nipper = index
@@ -363,7 +364,7 @@ class TimeBombBot:
         
         s_text = ''
         for i in range(len(self.players)):
-            s_text += '{}：{}陣営\n'.format(self.players[i].name, TEAM_STR[self.players_team[i]])
+            s_text += '{}：{}陣営\n'.format(self.players[i].display_name, TEAM_STR[self.players_team[i]])
         await self.send_message(s_text)
         
         self.mode = MODE_INIT
@@ -401,7 +402,7 @@ class TimeBombBot:
         s_text = '\n\n**ラウンド{} ターン{}**\n'.format(self.round, self.tern)
         if self.defuse!=0:
             s_text += '現在の解除ポイントは`{}`点です。\n'.format(self.defuse)
-        s_text += 'ニッパー係は`{}`です。\n'.format(self.players[self.nipper].name)
+        s_text += 'ニッパー係は`{}`です。\n'.format(self.players[self.nipper].display_name)
         s_text += 'ニッパー係は`プレイヤー名`を`選択`してください。'
         await self.send_message(s_text)
         
