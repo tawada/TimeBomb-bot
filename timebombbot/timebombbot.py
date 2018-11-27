@@ -1,7 +1,14 @@
 import discord
 import random
 import json
+import asyncio
     
+GAME_NONE = 0
+GAME_TIMEBOMB = 1
+GAME_ONENIGHTWEREWOLF = 2
+GAME_TIMER = 3
+GAME_STR = ['', 'タイムボム', 'ワンナイト人狼', 'タイマー']
+
 MODE_INIT      = 0
 MODE_ACCEPTING = 1
 MODE_GAMING    = 2
@@ -58,6 +65,7 @@ class TimeBombBot:
         self.token = df['token']
         self.game_channel_id = int(df['game_channel'])
 #        self.game_channel_id = int(df['debug_channel'])
+        self.game = GAME_NONE
         self.mode = MODE_INIT
         self.state = STATE_NONE
         self.players = []
@@ -170,10 +178,26 @@ class TimeBombBot:
             if int(message_channel.id) != int(self.main_channel.id):
                 return
             if 'タイムボム' in r_text:
+                self.game = GAME_TIMEBOMB
                 self.mode = MODE_ACCEPTING
-                s_text = 'タイムボムを開始します。\n' + '参加者は`参加`を宣言してください。'
+                s_text = '`タイムボム`を開始します。\n' + '参加者は`参加`を宣言してください。'
                 self.players = []
                 await self.send_message(s_text)
+                return
+            elif 'ワンナイト' in r_text or 'ワンナイト人狼' in r_text:
+                self.game = GAME_ONENIGHTWEREWOLF
+                self.mode = MODE_ACCEPTING
+                s_text = '`ワンナイト人狼`を開始します。\n' + '参加者は`参加`を宣言してください。'
+                self.players = []
+                await self.send_message(s_text)
+                return
+            elif 'タイマー' in r_text:
+                self.game = GAME_TIMER
+                self.mode = MODE_ACCEPTING
+                s_text = '`タイマー`を開始します。'
+                self.players = []
+                await self.send_message(s_text)
+                await self.timer()
                 return
             elif '参加' in r_text or '開始' in r_text:
                 s_text = 'ゲーム名を宣言してください。'
@@ -369,6 +393,24 @@ class TimeBombBot:
         
         self.mode = MODE_INIT
     
+    async def set_one_night_werewolf(self):
+        n = len(self.player)
+        
+
+    async def one_night_werewolf(self):
+        pass
+
+    async def timer(self):
+        for i in range(1,5):
+            await asyncio.sleep(1)
+            s_text = '{}秒経過'.format(i)
+            await self.send_message(s_text)
+        await asyncio.sleep(1)
+        s_text = '{}秒タイマーでしたー'.format(5)
+        await self.send_message(s_text)
+        self.game = GAME_NONE
+        self.mode = MODE_INIT
+
     async def start_round(self):
         """
         ラウンドの開始処理
