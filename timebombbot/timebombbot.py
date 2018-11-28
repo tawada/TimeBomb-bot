@@ -644,7 +644,7 @@ class TimeBombBot:
             
         s_text = ''
         for i in range(len(self.players)):
-            s_text += '{}：{}\n'.format(self.players[i].display_name, CARDo_STR[self.player_cards[i]])
+            s_text += '`{}`：`{}`\n'.format(self.players[i].display_name, CARDo_STR[self.player_cards[i]])
         await self.send_message(s_text)
         
         self.game = GAME_NONE
