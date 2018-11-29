@@ -20,6 +20,10 @@ STATE_WAIT_CARD   = 1
 STATE_WAIT_NIPPER = 2
 STATE_STR         = ['', '手札提出待ち', 'ニッパー係待ち']
 
+STATE_SEE = 1
+STATE_TALKING = 2
+STATE_VOTE = 3
+
 TEAM_P = 0
 TEAM_A = 1
 TEAM_STR = ['タイムパトロール', 'ボムボム主義者']
@@ -29,6 +33,12 @@ CARD_D    = 1
 CARD_B    = 2
 CARD_N    = 3
 CARD_STR = ['', '解除', 'ボム', 'なにもなし']
+
+CARD_WEREWOLF = 1
+CARD_SEER     = 2
+CARD_THIEF    = 3
+CARD_VILLAGER = 4
+CARDo_STR = ['', '人狼', '占い師', '怪盗', '村人']
 
 END_DEFUSE = 0
 END_BOOM   = 1
@@ -106,8 +116,8 @@ class TimeBombBot:
         #dstを省略するとデフォルトはゲームのチャンネル
         if dst == None:
             dst = self.main_channel
-        if hasattr(dst, 'name') and dst.name.startswith('ロボ'):
-            text = '{}({})'.format(text, dst.name)
+        if hasattr(dst, 'display_name') and dst.display_name.startswith('ロボ'):
+            text = '(ロボたわわ->{})「{}」'.format(dst.display_name, text)
             dst = self.main_channel
         await self.client.send_message(dst, text)
 
@@ -118,7 +128,7 @@ class TimeBombBot:
             self.display_name = None
             self.channel      = None
             self.content      = None
-
+            self.attachments  = False
     async def on_message(self, message):
         """
         受信した文字列を解析してゲームを進める関数
@@ -165,11 +175,11 @@ class TimeBombBot:
                     return
                 dummy_message                     = self.dummy()
                 dummy_message.author              = self.dummy()
-                dummy_message.author.name         = 'ロボ' + player
-                dummy_message.author.display_name = player
+                dummy_message.author.name         = player
+                dummy_message.author.display_name = 'ロボ' + player
                 dummy_message.channel             = self.main_channel
                 dummy_message.content             = s_text
-                await self.send_message('{}「{}」'.format(dummy_message.author.name, s_text))
+                await self.send_message('{}「{}」'.format(dummy_message.author.display_name, s_text))
                 await self.on_message(dummy_message)
                 return
             return
@@ -197,7 +207,7 @@ class TimeBombBot:
                 s_text = '`タイマー`を開始します。'
                 self.players = []
                 await self.send_message(s_text)
-                await self.timer()
+                await self.start_timer()
                 return
             elif '参加' in r_text or '開始' in r_text:
                 s_text = 'ゲーム名を宣言してください。'
@@ -209,13 +219,13 @@ class TimeBombBot:
             if '不参加' in r_text:
                 if author in self.players:
                     self.players.remove(author)
-                    s_text = '{}が参加を取りやめた．．．'.format(author_name)
+                    s_text = '`{}`が参加を取りやめた．．．'.format(author_name)
                     await self.send_message(s_text)
             elif '参加' in r_text or 'さんか' in r_text:
                 if author not in self.players:
                     self.players.append(author)
                     n = len(self.players)
-                    s_text = '{}が参加した。\n'.format(author_name)
+                    s_text = '`{}`が参加した。\n'.format(author_name)
                     await self.send_message(s_text)
                     if n == 1:
                         s_text = '参加者がそろったら`開始`を宣言してください。'
@@ -228,69 +238,16 @@ class TimeBombBot:
                     await self.send_message(s_text)
             
             elif '開始' in r_text:
-                n = len(self.players)
-                s_text = 'ゲームを開始します。\n参加者は '
-                for p in self.players:
-                    s_text += '`{}` '.format(p.display_name)
-                s_text += 'の{}人です。'.format(n)
-                await self.send_message(s_text)
-                
-                #ゲーム内変数の初期化
-                self.state = STATE_NONE
-                self.players_team = []
-                self.player_cards = []
-                self.total_cards = []
-                
-                self.defuse = 0
-                
-                #人数によってチーム編成
-                if n in {1, 2, 3}:
-                    p,a = 2,2
-                elif n in {4, 5}:
-                    p,a = 3,2
-                elif n == 6:
-                    p,a = 4,2
-                elif n in {7, 8}:
-                    p,a = 5,3
+                if self.game == GAME_TIMEBOMB:
+                    await self.start_game_timebomb()
+                elif self.game == GAME_ONENIGHTWEREWOLF:
+                    await self.start_game_onenightwerewolf()
                 else:
                     return
-                
-                T=([TEAM_P]*p)
-                T.extend([TEAM_A]*a)
-                random.shuffle(T)
-                self.players_team = [T[i] for i in range(n)]
-                for i in range(n):
-                    s_text = 'あなたは`{}`です'.format(TEAM_STR[self.players_team[i]])
-                    await self.send_message(s_text, self.players[i])
-                
-                if n == p+a:
-                    s_text = '{}が{}人、{}が{}人います。'.format(TEAM_STR[TEAM_P], p, TEAM_STR[TEAM_A], a)
-                    await self.send_message(s_text)
-                else:
-                    s_text = '{}人の参加者に対して、{}のカードを{}枚、{}のカードを{}枚配っています。'.format(n, TEAM_STR[TEAM_P], p, TEAM_STR[TEAM_A], a)
-                    await self.send_message(s_text)
-                
-                self.round = 1
-                self.tern = 1
-                self.nipper = random.randrange(n)
-                
-                #人数によって山札を変更
-                if n in {1, 2}:
-                    Y=([CARD_D]*3)
-                    Y.extend([CARD_B])
-                    Y.extend([CARD_N]*11)
-                else:
-                    Y=([CARD_D]*n)
-                    Y.extend([CARD_B])
-                    Y.extend([CARD_N]*(4*n-1))
-                self.total_cards = Y
-                
-                await self.start_round()
-                await self.start_tern()
-                self.mode = MODE_GAMING
-                self.game_state = STATE_WAIT_NIPPER
-                
         elif self.mode == MODE_GAMING:
+            if self.game == GAME_ONENIGHTWEREWOLF:
+                await self.gaming_onenightwerewolf(message)
+                return
             n = len(self.players)
             if int(message_channel.id) != int(self.main_channel.id):
                 return
@@ -307,7 +264,7 @@ class TimeBombBot:
                 await self.send_message(s_text)
                 return
             
-            if self.game_state == STATE_WAIT_NIPPER:
+            if self.state == STATE_WAIT_NIPPER:
                 
                 #ニッパー係の発言のみ解析
                 if player_index != self.nipper:
@@ -393,14 +350,307 @@ class TimeBombBot:
         
         self.mode = MODE_INIT
     
-    async def set_one_night_werewolf(self):
-        n = len(self.player)
+    async def start_game_timebomb(self):
+                n = len(self.players)
+                s_text = 'ゲームを開始します。\n参加者は '
+                for p in self.players:
+                    s_text += '`{}` '.format(p.display_name)
+                s_text += 'の{}人です。'.format(n)
+                await self.send_message(s_text)
+                
+                #ゲーム内変数の初期化
+                self.state = STATE_NONE
+                self.players_team = []
+                self.player_cards = []
+                self.total_cards = []
+                
+                self.defuse = 0
+                
+                #人数によってチーム編成
+                if n in {1, 2, 3}:
+                    p,a = 2,2
+                elif n in {4, 5}:
+                    p,a = 3,2
+                elif n == 6:
+                    p,a = 4,2
+                elif n in {7, 8}:
+                    p,a = 5,3
+                else:
+                    return
+                
+                T=([TEAM_P]*p)
+                T.extend([TEAM_A]*a)
+                random.shuffle(T)
+                self.players_team = [T[i] for i in range(n)]
+                for i in range(n):
+                    s_text = 'あなたは`{}`です'.format(TEAM_STR[self.players_team[i]])
+                    await self.send_message(s_text, self.players[i])
+                
+                if n == p+a:
+                    s_text = '{}が{}人、{}が{}人います。'.format(TEAM_STR[TEAM_P], p, TEAM_STR[TEAM_A], a)
+                    await self.send_message(s_text)
+                else:
+                    s_text = '{}人の参加者に対して、{}のカードを{}枚、{}のカードを{}枚配っています。'.format(n, TEAM_STR[TEAM_P], p, TEAM_STR[TEAM_A], a)
+                    await self.send_message(s_text)
+                
+                self.round = 1
+                self.tern = 1
+                self.nipper = random.randrange(n)
+                
+                #人数によって山札を変更
+                if n in {1, 2}:
+                    Y=([CARD_D]*3)
+                    Y.extend([CARD_B])
+                    Y.extend([CARD_N]*11)
+                else:
+                    Y=([CARD_D]*n)
+                    Y.extend([CARD_B])
+                    Y.extend([CARD_N]*(4*n-1))
+                self.total_cards = Y
+                
+                await self.start_round()
+                await self.start_tern()
+                self.mode = MODE_GAMING
+                self.state = STATE_WAIT_NIPPER
+
+    async def wait_5m(self):
+        for i in range(5, 1, -1):
+            s_text = '残り{}分'.format(i)
+            await self.send_message(s_text)
+            for _ in range(60):
+                if self.nowait:
+                    return
+                await asyncio.sleep(1)
+        s_text = '残り{}分'.format(1)
+        await self.send_message(s_text)
+        for _ in range(30):
+            if self.nowait:
+                return
+            await asyncio.sleep(1)
+        s_text = '残り{}秒'.format(30)
+        await self.send_message(s_text)
+        for _ in range(30):
+            if self.nowait:
+                return
+            await asyncio.sleep(1)
+
+    async def start_game_onenightwerewolf(self):
+        n = len(self.players)
+        if n not in {4, 5}:
+            s_text = '{}人には対応していません'.format(n)
+            await self.send_message(s_text)
+            return
+        Y = []
+        Y.extend([CARD_WEREWOLF]*2)
+        Y.extend([CARD_SEER])
+        Y.extend([CARD_THIEF])
+        Y.extend([CARD_VILLAGER]*2)
+        self.player_cards = []
+        team_werewolf = []
+        team_seer = []
+        team_thief = []
+        random.shuffle(Y)
+        for i in range(n):
+            card = Y.pop(0)
+            self.player_cards.append(card)
+            if card == CARD_WEREWOLF:
+                team_werewolf.append(i)
+            elif card == CARD_SEER:
+                team_seer.append(i)
+            elif card == CARD_THIEF:
+                team_thief.append(i)
+        self.mode = MODE_GAMING
+        self.state = STATE_SEE
+        self.seer_to = -1
+        self.thief_to = -1
         
+        for i in range(n):
+            card = self.player_cards[i]
+            s_text = 'あなたは`{}`です。'.format(CARDo_STR[card])
+            if card == CARD_WEREWOLF:
+                if len(team_werewolf) == 1:
+                    s_text += '\n仲間はいないようです。'
+                else:
+                    s_text += '\n`{}`が仲間のようです。'.format(
+                        self.players[ team_werewolf[0]  if team_werewolf[0] != i                        else team_werewolf[1] ].display_name)
+            elif card == CARD_SEER:
+                s_text += '\n占い先を`選択`してください。'
+                s_text += '\n制限時間内に`選択`しない場合は配布されていない役職がわかります。\n'
+                for j in range(n):
+                    if i != j:
+                        s_text += '`{}` '.format(self.players[j].display_name)
+                s_text += 'から`選択`してください。'
+            elif card == CARD_THIEF:
+                s_text += '\n交換先を`選択`してください。'
+                s_text += '\n制限時間内に`選択`しない場合は役職を交換しません。\n'
+                for j in range(n):
+                    if i != j:
+                        s_text += '`{}` '.format(self.players[j].display_name)
+                s_text += 'から`選択`してください。'
+            await self.send_message(s_text, self.players[i])
+        s_text = '自分の役職を確認してください。'
+        await self.send_message(s_text)
+        s_text = '残り{}秒'.format(30)
+        await self.send_message(s_text)
+        await asyncio.sleep(25)
+        for i in range(5, 0, -1):
+            s_text = '残り{}秒'.format(i)
+            await self.send_message(s_text)
+            await asyncio.sleep(1)
+        
+        self.state = STATE_TALKING
+        
+        if team_seer != []:
+            if self.seer_to == -1:
+                s_text = 'この村には '
+                for card in Y:
+                    s_text += '`{}` '.format(CARDo_STR[card])
+                s_text += 'が欠けています。'
+                await self.send_message(s_text, self.players[team_seer[0]])
+            else:
+                s_text = '`{}` はどうやら `{}` です。'.format(self.players[self.seer_to].display_name, CARDo_STR[self.player_cards[self.seer_to]])
+                await self.send_message(s_text, self.players[team_seer[0]])
+        if team_thief != []:
+            if self.thief_to == -1:
+                s_text = '役職を交換しませんでした。'
+                await self.send_message(s_text, self.players[team_thief[0]])
+            else:
+                s_text = '`{}` と交換してあなたは `{}` になりました。'.format(self.players[self.thief_to].display_name, CARDo_STR[self.player_cards[self.thief_to]])
+                await self.send_message(s_text, self.players[team_thief[0]])
+            
+        s_text = 'それでは話し合いを始めてください。'
+        await self.send_message(s_text)
 
-    async def one_night_werewolf(self):
-        pass
+        self.nowait = False
+        await self.wait_5m()
+        
+        self.vote = [-1]*n
+        self.state = STATE_VOTE
+        s_text = 'それでは投票です。'
+        await self.send_message(s_text)
+        
+        for i in range(len(self.players)):
+            s_text = '吊りたい相手を`選択`してください。'
+            await self.send_message(s_text, self.players[i])
 
-    async def timer(self):
+    def get_player_index(self, author):
+        for i in range(len(self.players)):
+            if self.players[i].name == author.name:
+                return i
+        return -1
+        
+    def get_index(self, r_text):
+        for i in range(len(self.players)):
+            if self.players[i].name in r_text:
+                return i
+            elif self.players[i].display_name in r_text:
+                return i
+        return -1
+
+    async def gaming_onenightwerewolf(self, message):
+        if message.author.name not in [p.name for p in self.players]:
+            # 参加者以外の発言は解析しない
+            return
+        r_text          = message.content
+        if self.state == STATE_SEE:
+            # 占い・怪盗のターン
+#            private_channel = await self.client.start_private_message(message.author)
+#            if int(message.channel.id) != int(private_channel.id):
+#                # プライベート発言以外は解析しない
+#                return
+            if '選択' not in r_text:
+                return
+            index = self.get_index(r_text)
+            if index == -1:
+                return
+            if self.players[index].name == message.author.name:
+                # 発言者自身は選択できない
+                return
+            player_index = self.get_player_index(message.author)
+            if self.player_cards[player_index] == CARD_SEER and self.seer_to == -1:
+                self.seer_to = index
+                s_text = '`{}`を占います。'.format(self.players[index].display_name)
+                await self.send_message(s_text)
+            elif self.player_cards[player_index] == CARD_THIEF and self.thief_to == -1:
+                self.thief_to = index
+                s_text = '`{}`と交換します。'.format(self.players[index].display_name)
+                await self.send_message(s_text)
+            return
+        elif self.state == STATE_TALKING:
+            if r_text.startswith('@投票'):
+                self.nowait = True
+            return
+        elif self.state == STATE_VOTE:
+#            private_channel = await self.client.start_private_message(message.author)
+#            if int(message.channel.id) != int(private_channel.id):
+#                # プライベート発言以外は解析しない
+#                return
+            if r_text.startswith('@アクション'):
+                s_text = ''
+                for i in range(len(self.players)):
+                    if self.vote[i] == -1:
+                        s_text += '`{}` '.format(self.players[i].display_name)
+                s_text += 'が投票していません。'
+                await self.send_message(s_text)
+                return
+            if '選択' not in r_text and '投票' not in r_text:
+                return
+            index = self.get_index(r_text)
+            if index == -1:
+                return
+            if self.players[index].name == message.author.name:
+                # 発言者自身は選択できない
+                return
+            player_index = self.get_player_index(message.author)
+            if self.vote[player_index] != -1:
+                return
+            self.vote[player_index] = index
+            s_text = '`{}` に投票しました。'.format(self.players[index].display_name)
+            await self.send_message(s_text, message.author)
+            if self.vote.count(-1) == 0:
+                await self.end_onenightwerewolf()
+            return
+        return
+
+    async def end_onenightwerewolf(self):
+        n = len(self.players)
+        count_vote = {i:0 for i in range(n)}
+        for v in self.vote:
+            count_vote[v] += 1
+        count_vote_tuple = sorted(count_vote.items(), key=lambda x: -x[1])
+        s_text = ''
+        for k,v in count_vote_tuple:
+            s_text += '`{}` に{}人投票\n'.format(self.players[k].display_name, v)
+        await self.send_message(s_text)
+        
+        if (len(count_vote_tuple)) == 1 or count_vote_tuple[0][1] != count_vote_tuple[1][1]:
+            index = count_vote_tuple[0][0]
+            s_text = '`{}` が吊られた。'.format(self.players[index].display_name)
+            await self.send_message(s_text)
+        
+            if self.player_cards[index] == CARD_WEREWOLF and self.thief_to != index:
+                s_text = '`{}` は`{}`だった。\n人間の勝利です！'.format(self.players[index].display_name, CARDo_STR[CARD_WEREWOLF])
+                await self.send_message(s_text)
+            else:
+                s_text = '`{}` は`{}`だった。\n人間の敗北です！'.format(self.players[index].display_name, CARDo_STR[self.player_cards[index]])
+                await self.send_message(s_text)
+        else:
+            s_text = '得票が同数のため, 平和裁判でした。'
+            if self.player_cards.count(CARD_WEREWOLF) == 0:
+                s_text += '\nこの村に `{}` はいませんでした。\n人間の勝利です！'.format(CARDo_STR[CARD_WEREWOLF])
+            else:
+                s_text += '\nこの村に潜む `{}` に人間は食い尽くされました。\n `{}`の勝利です！'.format(CARDo_STR[CARD_WEREWOLF], CARDo_STR[CARD_WEREWOLF])
+            await self.send_message(s_text)
+            
+        s_text = ''
+        for i in range(len(self.players)):
+            s_text += '`{}`：`{}`\n'.format(self.players[i].display_name, CARDo_STR[self.player_cards[i]])
+        await self.send_message(s_text)
+        
+        self.game = GAME_NONE
+        self.mode = MODE_INIT
+
+    async def start_timer(self):
         for i in range(1,5):
             await asyncio.sleep(1)
             s_text = '{}秒経過'.format(i)
