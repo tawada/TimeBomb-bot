@@ -74,7 +74,7 @@ class TimeBombBot:
             return
         self.token = df['token']
         self.game_channel_id = int(df['game_channel'])
-        self.game_channel_id = int(df['debug_channel'])
+#        self.game_channel_id = int(df['debug_channel'])
         self.game = GAME_NONE
         self.mode = MODE_INIT
         self.state = STATE_NONE
@@ -606,7 +606,7 @@ class TimeBombBot:
                 return
             self.vote[player_index] = index
             s_text = '`{}` に投票しました。'.format(self.players[index].display_name)
-            await self.send_message(s_text)
+            await self.send_message(s_text, message.author)
             if self.vote.count(-1) == 0:
                 await self.end_onenightwerewolf()
             return
