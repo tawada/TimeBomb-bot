@@ -436,17 +436,17 @@ class TimeBombBot:
 
     async def start_game_onenightwerewolf(self):
         n = len(self.players)
-        if n not in {4, 5}:
+        if n not in {3, 4, 5}:
             s_text = '{}人には対応していません'.format(n)
             await self.send_message(s_text)
             return
         Y = []
         Y.extend([CARD_WEREWOLF]*2)
         Y.extend([CARD_SEER])
-        Y.extend([CARD_THIEF])
-        Y.extend([CARD_VILLAGER]*2)
+#        Y.extend([CARD_THIEF])
+#        Y.extend([CARD_VILLAGER]*2)
         self.player_cards = []
-        team_werewolf = []
+        self.team_werewolf = []
         team_seer = []
         team_thief = []
         random.shuffle(Y)
@@ -454,7 +454,7 @@ class TimeBombBot:
             card = Y.pop(0)
             self.player_cards.append(card)
             if card == CARD_WEREWOLF:
-                team_werewolf.append(i)
+                self.team_werewolf.append(i)
             elif card == CARD_SEER:
                 team_seer.append(i)
             elif card == CARD_THIEF:
@@ -468,11 +468,12 @@ class TimeBombBot:
             card = self.player_cards[i]
             s_text = 'あなたは`{}`です。'.format(CARDo_STR[card])
             if card == CARD_WEREWOLF:
-                if len(team_werewolf) == 1:
+                if len(self.team_werewolf) == 1:
                     s_text += '\n仲間はいないようです。'
                 else:
                     s_text += '\n`{}`が仲間のようです。'.format(
-                        self.players[ team_werewolf[0]  if team_werewolf[0] != i                        else team_werewolf[1] ].display_name)
+                        self.players[ self.team_werewolf[0]  if self.team_werewolf[0] != i                        else self.team_werewolf[1] ].display_name)
+                    s_text += '\n制限時間内に強く念じると仲間に伝わります。'
             elif card == CARD_SEER:
                 s_text += '\n占い先を`選択`してください。'
                 s_text += '\n制限時間内に`選択`しない場合は配布されていない役職がわかります。\n'
@@ -517,7 +518,11 @@ class TimeBombBot:
             else:
                 s_text = '`{}` と交換してあなたは `{}` になりました。'.format(self.players[self.thief_to].display_name, CARDo_STR[self.player_cards[self.thief_to]])
                 await self.send_message(s_text, self.players[team_thief[0]])
-            
+        if self.team_werewolf != []:
+            for index in self.team_werewolf:
+                s_text = '制限時間が終了しました。'
+                await self.send_message(s_text, self.players[index])
+                
         s_text = 'それでは話し合いを始めてください。'
         await self.send_message(s_text)
 
@@ -558,6 +563,13 @@ class TimeBombBot:
 #            if int(message.channel.id) != int(private_channel.id):
 #                # プライベート発言以外は解析しない
 #                return
+            player_index = self.get_player_index(message.author)
+            if player_index in self.team_werewolf:
+                if len(self.team_werewolf) == 2 and int(message.channel.id) != self.game_channel_id:
+                    other = self.team_werewolf[0] if player_index == self.team_werewolf[1] else self.team_werewolf[1]
+                    s_text = '{}「{}」'.format(self.players[player_index].display_name, r_text)
+                    await self.send_message(s_text, self.players[other])
+                return
             if '選択' not in r_text:
                 return
             index = self.get_index(r_text)
@@ -570,15 +582,22 @@ class TimeBombBot:
             if self.player_cards[player_index] == CARD_SEER and self.seer_to == -1:
                 self.seer_to = index
                 s_text = '`{}`を占います。'.format(self.players[index].display_name)
-                await self.send_message(s_text)
+                await self.send_message(s_text, self.players[player_index])
             elif self.player_cards[player_index] == CARD_THIEF and self.thief_to == -1:
                 self.thief_to = index
                 s_text = '`{}`と交換します。'.format(self.players[index].display_name)
-                await self.send_message(s_text)
+                await self.send_message(s_text, self.players[player_index])
             return
         elif self.state == STATE_TALKING:
             if r_text.startswith('@投票'):
                 self.nowait = True
+                return
+            player_index = self.get_player_index(message.author)
+            if player_index in self.team_werewolf:
+                if len(self.team_werewolf) == 2 and int(message.channel.id) != self.game_channel_id:
+                    other = self.team_werewolf[0] if player_index == self.team_werewolf[1] else self.team_werewolf[1]
+                    s_text = '発言「{}」は仲間に届かなかったようだ。'.format(r_text)
+                    await self.send_message(s_text, self.players[player_index])
             return
         elif self.state == STATE_VOTE:
 #            private_channel = await self.client.start_private_message(message.author)
@@ -602,8 +621,8 @@ class TimeBombBot:
                 # 発言者自身は選択できない
                 return
             player_index = self.get_player_index(message.author)
-            if self.vote[player_index] != -1:
-                return
+            #if self.vote[player_index] != -1:
+            #    return
             self.vote[player_index] = index
             s_text = '`{}` に投票しました。'.format(self.players[index].display_name)
             await self.send_message(s_text, message.author)
@@ -622,25 +641,43 @@ class TimeBombBot:
         for k,v in count_vote_tuple:
             s_text += '`{}` に{}人投票\n'.format(self.players[k].display_name, v)
         await self.send_message(s_text)
-        
-        if (len(count_vote_tuple)) == 1 or count_vote_tuple[0][1] != count_vote_tuple[1][1]:
-            index = count_vote_tuple[0][0]
-            s_text = '`{}` が吊られた。'.format(self.players[index].display_name)
-            await self.send_message(s_text)
-        
-            if self.player_cards[index] == CARD_WEREWOLF and self.thief_to != index:
-                s_text = '`{}` は`{}`だった。\n人間の勝利です！'.format(self.players[index].display_name, CARDo_STR[CARD_WEREWOLF])
-                await self.send_message(s_text)
-            else:
-                s_text = '`{}` は`{}`だった。\n人間の敗北です！'.format(self.players[index].display_name, CARDo_STR[self.player_cards[index]])
-                await self.send_message(s_text)
-        else:
+
+        if count_vote.count(1) == n:
             s_text = '得票が同数のため, 平和裁判でした。'
             if self.player_cards.count(CARD_WEREWOLF) == 0:
                 s_text += '\nこの村に `{}` はいませんでした。\n人間の勝利です！'.format(CARDo_STR[CARD_WEREWOLF])
             else:
                 s_text += '\nこの村に潜む `{}` に人間は食い尽くされました。\n `{}`の勝利です！'.format(CARDo_STR[CARD_WEREWOLF], CARDo_STR[CARD_WEREWOLF])
             await self.send_message(s_text)
+        
+        else:
+            vote_max = count_vote_tuple[0][1]
+            index_max_list = []
+            for i,v in count_vote_tuple:
+                if v == vote_max:
+                    index_max_list.append(i)
+            s_text = ''
+            for i in index_max_list:
+                s_text += '`{}` '.format(self.players[i].display_name)
+            s_text += 'が吊られた。'
+            await self.send_message(s_text)
+            is_werewolf = False
+            index = inde_max_list[0]
+            for i in index_max_list:
+                if self.player_cards[i] == CARD_WEREWOLF and self.thief_to != i:
+                    index = i
+                    is_werewolf = True
+                elif self.thief_to != -1 and self.player_cards[i] == CARD_THIEF and self.player_cards[self.thief_to] == CARD_WEREWOLF:
+                    index = i
+                    is_werewolf = True
+
+            if is_werewolf:
+                s_text = '`{}` は`{}`だった。\n人間の勝利です！'.format(self.players[index].display_name, CARDo_STR[CARD_WEREWOLF])
+                await self.send_message(s_text)
+            else:
+                s_text = '`{}` `{}`だった。\n人間の敗北です！'.format(self.players[index].display_name, CARDo_STR[self.player_cards[index]])
+                await self.send_message(s_text)
+
             
         s_text = ''
         for i in range(len(self.players)):
